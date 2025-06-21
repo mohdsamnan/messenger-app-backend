@@ -7,17 +7,19 @@ const mongoose = require('mongoose');
 const http     = require('http');
 const { Server } = require('socket.io');
 
+// Models
 const User    = require('./models/User');
 const Message = require('./models/Message');
 
+// App setup
 const app        = express();
 const PORT       = process.env.PORT || 3001;
 const SECRET_KEY = process.env.SECRET_KEY || 'dev-secret';
 const MONGO_URI  = process.env.MONGO_URI || 'mongodb://localhost:27017/messenger';
 
-// Parse FRONTEND_ORIGIN as comma-separated list or fallback to localhost
-const rawOrigins = process.env.FRONTEND_ORIGIN || 'http://localhost:3000,https://shiny-monstera-6fbd39.netlify.app';
-const allowedOrigins = rawOrigins.split(',').map(origin => origin.trim());
+// Parse FRONTEND_ORIGIN as comma-separated list
+const rawOrigins = process.env.FRONTEND_ORIGIN || 'http://localhost:3000,https://your-netlify-site';
+const allowedOrigins = rawOrigins.split(',').map(o => o.trim());
 
 // CORS configuration
 const corsOptions = {
@@ -27,20 +29,19 @@ const corsOptions = {
     } else {
       callback(new Error('CORS policy: Origin not allowed'));
     }
-  }
+  },
+  credentials: true,
 };
 
-// Middleware
 app.use(express.json());
 app.use(cors(corsOptions));
 
-// MongoDB Connection
-mongoose
-  .connect(MONGO_URI)
+// MongoDB connection
+mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Authentication middleware for REST
+// Auth middleware for REST
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -57,8 +58,8 @@ function authenticate(req, res, next) {
   }
 }
 
-// REST Routes
-app.get('/', (req, res) => res.send('Backend server is running 🚀'));
+// REST routes
+app.get('/', (req, res) => res.send('🚀 Backend server is running'));
 
 app.post('/signup', async (req, res) => {
   const { email, password } = req.body;
@@ -88,16 +89,15 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Protected REST endpoints
 app.post('/messages/send', authenticate, async (req, res) => {
   const { receiver, text } = req.body;
   const sender = req.user.email;
   try {
     const msg = new Message({ sender, receiver, text });
     await msg.save();
-    res.json({ message: 'Message sent successfully', timestamp: msg.timestamp });
+    res.json({ message: 'Message sent', timestamp: msg.timestamp });
   } catch (err) {
-    console.error('❌ Failed to send message:', err);
+    console.error('❌ Send error:', err);
     res.status(500).json({ message: 'Failed to send message' });
   }
 });
@@ -114,32 +114,32 @@ app.get('/messages/history', authenticate, async (req, res) => {
     }).sort({ timestamp: 1 });
     res.json(msgs);
   } catch (err) {
-    console.error('❌ Failed to fetch messages:', err);
+    console.error('❌ History error:', err);
     res.status(500).json({ message: 'Failed to fetch messages' });
   }
 });
 
-// Socket.IO Setup
+// HTTP + WebSocket server
 const server = http.createServer(app);
 const io = new Server(server, { cors: corsOptions });
 
 // Socket authentication
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-  if (!token) return next(new Error('Authentication error: token required'));
+  if (!token) return next(new Error('Auth error: token required'));
   try {
     const payload = jwt.verify(token, SECRET_KEY);
     socket.user = payload;
-    return next();
+    next();
   } catch (err) {
     console.error('❌ Socket auth error:', err);
-    return next(new Error('Authentication error: invalid token'));
+    next(new Error('Auth error: invalid token'));
   }
 });
 
 io.on('connection', socket => {
-  console.log('🔌 Client connected:', socket.id, 'user:', socket.user.email);
-  socket.join(socket.user.email); // room per user
+  console.log('🔌 Client connected:', socket.id, socket.user.email);
+  socket.join(socket.user.email);
 
   socket.on('send_message', async ({ receiver, text }) => {
     const sender = socket.user.email;
@@ -148,16 +148,15 @@ io.on('connection', socket => {
       await msg.save();
       io.to(receiver).emit('receive_message', { sender, receiver, text, timestamp: msg.timestamp });
     } catch (err) {
-      console.error('❌ Socket send_message error:', err);
+      console.error('❌ Socket send error:', err);
     }
   });
 
   socket.on('disconnect', reason => {
-    console.log('❌ Client disconnected:', socket.id, 'reason:', reason);
+    console.log('❌ Client disconnected:', socket.id, reason);
   });
 });
 
-// Start server
 server.listen(PORT, () => {
   console.log(`🚀 Server listening on port ${PORT}`);
 });
