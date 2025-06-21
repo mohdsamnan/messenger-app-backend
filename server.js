@@ -1,29 +1,35 @@
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const cors = require('cors');
+// server.js
+require('dotenv').config();            // only if you want to pull vars from a .env locally
+const express    = require('express');
+const jwt        = require('jsonwebtoken');
+const cors       = require('cors');
 const bodyParser = require('body-parser');
 
-const app = express();
-const PORT = 3001;
-const SECRET_KEY = 'super-secret-key'; // For now, stored directly
+const app        = express();
+const PORT       = process.env.PORT || 3001;
+const SECRET_KEY = process.env.SECRET_KEY || 'super-secret-key';
+const FRONTEND   = process.env.FRONTEND_URL   // e.g. https://your-site.netlify.app
 
-app.use(cors());
+// only allow your frontend origin (replace FRONTEND_URL in Netlify env)
+app.use(cors({
+  origin: FRONTEND,
+  credentials: true,
+}));
+
 app.use(bodyParser.json());
 
-// In-memory user store (for small group only)
+// In-memory user store
 const users = {};
 
-// Route: Sign up
+// Sign-up
 app.post('/signup', (req, res) => {
   const { email, password } = req.body;
-  if (users[email]) {
-    return res.status(409).json({ message: 'User already exists' });
-  }
+  if (users[email]) return res.status(409).json({ message: 'User already exists' });
   users[email] = { password };
   res.status(201).json({ message: 'User created' });
 });
 
-// Route: Login
+// Login
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
   const user = users[email];
@@ -34,18 +40,18 @@ app.post('/login', (req, res) => {
   res.json({ token });
 });
 
-// Route: Get current user info
+// Get current user
 app.get('/me', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.sendStatus(401);
-  const token = authHeader.split(' ')[1];
+  const auth = req.headers.authorization || '';
+  const token = auth.split(' ')[1];
+  if (!token) return res.sendStatus(401);
   jwt.verify(token, SECRET_KEY, (err, decoded) => {
     if (err) return res.sendStatus(403);
     res.json({ email: decoded.email });
   });
 });
 
-// Start server
+// Start server on all interfaces
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
