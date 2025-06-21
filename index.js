@@ -21,7 +21,7 @@ const MONGO_URI  = process.env.MONGO_URI || 'mongodb://localhost:27017/messenger
 const rawOrigins = process.env.FRONTEND_ORIGIN || 'http://localhost:3000,https://your-netlify-site';
 const allowedOrigins = rawOrigins.split(',').map(o => o.trim());
 
-// CORS configuration
+// CORS configuration (place before any routes or express.json)
 const corsOptions = {
   origin: (incomingOrigin, callback) => {
     if (!incomingOrigin || allowedOrigins.includes(incomingOrigin)) {
@@ -31,10 +31,13 @@ const corsOptions = {
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-app.use(express.json());
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight for all routes
+app.use(express.json());
 
 // MongoDB connection
 mongoose.connect(MONGO_URI)
